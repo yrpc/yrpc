@@ -38,13 +38,13 @@ type serveconn struct {
 	// rwc is the underlying network connection.
 	// This is never wrapped by other types and is the value given out
 	// to CloseNotifier callers. It is usually of type *net.TCPConn
-	rwc net.Conn
+	rwc         net.Conn
+	wlock       sync.Mutex
+	bytesWriter *Writer
 
-	reader       *defaultFrameReader    // used in conn.readFrames
-	writer       FrameWriter            // used by handlers
-	readFrameCh  chan readFrameResult   // written by conn.readFrames
-	writeFrameCh chan writeFrameRequest // written by FrameWriter
-	rwDone       uint32
+	reader      *defaultFrameReader  // used in conn.readFrames
+	writer      FrameWriter          // used by handlers
+	readFrameCh chan readFrameResult // written by conn.readFrames
 
 	// modified by Server
 	untrack     uint32 // ony the first call to untrack actually do it, subsequent calls should wait for untrackedCh
@@ -135,6 +135,7 @@ func (sc *serveconn) serve() {
 		}
 		sc.Close()
 		sc.wg.Wait()
+		sc.cs.Release()
 	}()
 
 	binding := sc.server.bindings[idx]
@@ -146,13 +147,11 @@ func (sc *serveconn) serve() {
 	}
 	ctx := sc.ctx
 	sc.reader = newFrameReaderWithMFS(ctx, sc.rwc, binding.DefaultReadTimeout, maxFrameSize)
-	sc.writer = newFrameWriter(ctx, sc.writeFrameCh) // only used by blocking mode
+	sc.writer = newFrameWriter(sc) // only used by blocking mode
+	sc.bytesWriter = NewWriterWithTimeout(ctx, sc.rwc, binding.DefaultWriteTimeout)
 
 	GoFunc(&sc.wg, func() {
 		sc.readFrames()
-	})
-	GoFunc(&sc.wg, func() {
-		sc.writeFrames(binding.DefaultWriteTimeout)
 	})
 
 	handler := binding.Handler
@@ -255,7 +254,7 @@ func (sc *serveconn) GetID() string {
 // GetWriter generate a FrameWriter for the connection
 func (sc *serveconn) GetWriter() FrameWriter {
 
-	return newFrameWriter(sc.ctx, sc.writeFrameCh)
+	return newFrameWriter(sc)
 }
 
 var (
@@ -270,11 +269,6 @@ type readFrameResult struct {
 	// retains f. After readMore, f is invalid and more frames can be
 	// read.
 	readMore func()
-}
-
-type writeFrameRequest struct {
-	dfw    *defaultFrameWriter
-	result chan error
 }
 
 // A gate lets two goroutines coordinate their activities.
@@ -298,7 +292,6 @@ func (sc *serveconn) readFrames() (err error) {
 	}
 
 	defer func() {
-		sc.tryFreeStreams()
 
 		if err == ErrFrameTooLarge {
 			LogError("ErrFrameTooLarge", "ip", sc.RemoteAddr())
@@ -380,10 +373,49 @@ func (sc *serveconn) readFrames() (err error) {
 
 }
 
-func (sc *serveconn) writeFrames(timeout int) (err error) {
+func (sc *serveconn) writeFrame(dfw *defaultFrameWriter) (err error) {
+	select {
+	case <-sc.ctx.Done():
+		return sc.ctx.Err()
+	default:
+	}
 
-	defer func() {
-		sc.tryFreeStreams()
+	sc.wlock.Lock()
+
+	defer sc.wlock.Unlock()
+
+	flags := dfw.Flags()
+	requestID := dfw.RequestID()
+
+	if flags.IsRst() {
+		s := sc.cs.GetStream(requestID, flags)
+		if s == nil {
+			err = ErrRstNonExistingStream
+			return
+		}
+		// for rst frame, AddOutFrame returns false when no need to send the frame
+		if !s.AddOutFrame(requestID, flags) {
+			return
+		}
+	} else if !flags.IsPush() { // skip stream logic if PushFlag set
+		s, loaded := sc.cs.CreateOrGetStream(sc.ctx, requestID, flags)
+		if !loaded {
+			LogDebug(unsafe.Pointer(sc.cs), "serveconn new stream", requestID, flags, dfw.Cmd())
+		}
+		if !s.AddOutFrame(requestID, flags) {
+			err = ErrWriteAfterCloseSelf
+			return
+		}
+	}
+
+	_, err = sc.bytesWriter.Write(dfw.GetWbuf())
+	if err != nil {
+		LogDebug(unsafe.Pointer(sc), "serveconn Write", err)
+		sc.Close()
+
+		if opErr, ok := err.(*net.OpError); ok {
+			err = opErr.Err
+		}
 
 		binding := sc.server.bindings[sc.idx]
 		if binding.CounterMetric != nil {
@@ -391,65 +423,13 @@ func (sc *serveconn) writeFrames(timeout int) (err error) {
 			if err != nil && binding.OverlayNetwork != nil {
 				errStr = errStrWriteFramesForOverlayNetwork
 			}
-			countlvs := []string{"method", "writeFrames", "error", errStr}
+			countlvs := []string{"method", "writeFrame", "error", errStr}
 			binding.CounterMetric.With(countlvs...).Add(1)
 		}
-	}()
-
-	ctx := sc.ctx
-	writer := NewWriterWithTimeout(ctx, sc.rwc, timeout)
-	for {
-		select {
-		case res := <-sc.writeFrameCh:
-			dfw := res.dfw
-			flags := dfw.Flags()
-			requestID := dfw.RequestID()
-
-			if flags.IsRst() {
-				s := sc.cs.GetStream(requestID, flags)
-				if s == nil {
-					res.result <- ErrRstNonExistingStream
-					break
-				}
-				// for rst frame, AddOutFrame returns false when no need to send the frame
-				if !s.AddOutFrame(requestID, flags) {
-					res.result <- nil
-					break
-				}
-			} else if !flags.IsPush() { // skip stream logic if PushFlag set
-				s, loaded := sc.cs.CreateOrGetStream(sc.ctx, requestID, flags)
-				if !loaded {
-					LogDebug(unsafe.Pointer(sc.cs), "serveconn new stream", requestID, flags, dfw.Cmd())
-				}
-				if !s.AddOutFrame(requestID, flags) {
-					res.result <- ErrWriteAfterCloseSelf
-					break
-				}
-			}
-
-			_, err = writer.Write(dfw.GetWbuf())
-			if err != nil {
-				LogDebug(unsafe.Pointer(sc), "serveconn Write", err)
-				sc.Close()
-				res.result <- err
-
-				if opErr, ok := err.(*net.OpError); ok {
-					return opErr.Err
-				}
-				return
-			}
-			res.result <- nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		return
 	}
-}
 
-func (sc *serveconn) tryFreeStreams() {
-	count := atomic.AddUint32(&sc.rwDone, 1)
-	if count == 2 {
-		sc.cs.Release()
-	}
+	return
 }
 
 // Request clientconn from serveconn
@@ -499,7 +479,7 @@ func (sc *serveconn) writeFirstFrame(cmd Cmd, flags FrameFlag, payload []byte) (
 	ci.respes[requestID] = resp
 	ci.l.Unlock()
 
-	writer := newFrameWriter(sc.ctx, sc.writeFrameCh)
+	writer := newFrameWriter(sc)
 	writer.StartWrite(requestID, cmd, flags)
 	writer.WriteBytes(payload)
 	err := writer.EndWrite()

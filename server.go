@@ -327,22 +327,20 @@ func (srv *Server) trackListener(ln net.Listener, add bool) {
 func (srv *Server) newConn(ctx context.Context, rwc net.Conn, idx int) (sc *serveconn) {
 	if srv.bindings[idx].ReadFrameChSize > 0 {
 		sc = &serveconn{
-			server:       srv,
-			rwc:          rwc,
-			idx:          idx,
-			untrackedCh:  make(chan struct{}),
-			cs:           &ConnStreams{},
-			readFrameCh:  make(chan readFrameResult, srv.bindings[idx].ReadFrameChSize),
-			writeFrameCh: make(chan writeFrameRequest)}
+			server:      srv,
+			rwc:         rwc,
+			idx:         idx,
+			untrackedCh: make(chan struct{}),
+			cs:          &ConnStreams{},
+			readFrameCh: make(chan readFrameResult, srv.bindings[idx].ReadFrameChSize)}
 	} else {
 		sc = &serveconn{
-			server:       srv,
-			rwc:          rwc,
-			idx:          idx,
-			untrackedCh:  make(chan struct{}),
-			cs:           &ConnStreams{},
-			readFrameCh:  make(chan readFrameResult),
-			writeFrameCh: make(chan writeFrameRequest)}
+			server:      srv,
+			rwc:         rwc,
+			idx:         idx,
+			untrackedCh: make(chan struct{}),
+			cs:          &ConnStreams{},
+			readFrameCh: make(chan readFrameResult)}
 	}
 
 	ctx, cancelCtx := context.WithCancel(ctx)

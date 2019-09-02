@@ -26,8 +26,6 @@ type Connection struct {
 	conf       ConnectionConfig
 	subscriber SubFunc // there can be only one subscriber because of streamed frames
 
-	writeFrameCh chan writeFrameRequest // it's never closed so won't panic
-
 	idx int // modified in connect
 
 	// cancelCtx cancels the connection-level context.
@@ -39,6 +37,8 @@ type Connection struct {
 	mu            sync.Mutex
 	closed        bool
 	rwc           net.Conn
+	fbw           *Writer
+	wlock         sync.Mutex
 	respes        map[uint64]*response
 	loopCtx       context.Context
 	loopCancelCtx context.CancelFunc
@@ -135,8 +135,8 @@ func newConnection(rwc net.Conn, addr []string, conf ConnectionConfig, f SubFunc
 
 	c := &Connection{
 		rwc: rwc, addrs: addr, conf: conf, subscriber: f,
-		writeFrameCh: make(chan writeFrameRequest), respes: make(map[uint64]*response),
-		cs: &ConnStreams{}, ctx: ctx, cancelCtx: cancelCtx,
+		respes: make(map[uint64]*response),
+		cs:     &ConnStreams{}, ctx: ctx, cancelCtx: cancelCtx,
 		reconnect: reconnect}
 
 	if conf.Handler != nil {
@@ -146,7 +146,9 @@ func newConnection(rwc net.Conn, addr []string, conf ConnectionConfig, f SubFunc
 	if rwc != nil {
 		// loopxxx should be paired with rwc
 		c.loopCtx, c.loopCancelCtx = context.WithCancel(ctx)
+		c.fbw = NewWriterWithTimeout(c.loopCtx, rwc, conf.WriteTimeout)
 	}
+
 	GoFunc(&c.wg, c.loop)
 	return c
 }
@@ -161,10 +163,6 @@ func (conn *Connection) loop() {
 		conn.loopWG = &sync.WaitGroup{}
 		GoFunc(conn.loopWG, func() {
 			conn.readFrames()
-		})
-
-		GoFunc(conn.loopWG, func() {
-			conn.writeFrames()
 		})
 
 		<-conn.loopCtx.Done()
@@ -335,7 +333,7 @@ func (conn *Connection) writeFirstFrame(cmd Cmd, flags FrameFlag, payload []byte
 	conn.respes[requestID] = resp
 	conn.mu.Unlock()
 
-	writer := newFrameWriter(conn.loopCtx, conn.writeFrameCh)
+	writer := newFrameWriter(conn)
 	writer.StartWrite(requestID, cmd, flags)
 	writer.WriteBytes(payload)
 	err := writer.EndWrite()
@@ -352,6 +350,45 @@ func (conn *Connection) writeFirstFrame(cmd Cmd, flags FrameFlag, payload []byte
 	}
 
 	return requestID, resp, writer, nil
+}
+
+func (conn *Connection) writeFrame(dfw *defaultFrameWriter) (err error) {
+
+	select {
+	case <-conn.loopCtx.Done():
+		return conn.loopCtx.Err()
+	default:
+	}
+
+	flags := dfw.Flags()
+	requestID := dfw.RequestID()
+
+	if flags.IsRst() {
+		s := conn.cs.GetStream(requestID, flags)
+		if s == nil {
+			err = ErrRstNonExistingStream
+			return
+		}
+		// for rst frame, AddOutFrame returns false when no need to send the frame
+		if !s.AddOutFrame(requestID, flags) {
+			return
+		}
+	} else if !flags.IsPush() { // skip stream logic if PushFlag set
+		s, _ := conn.cs.CreateOrGetStream(conn.loopCtx, requestID, flags)
+		if !s.AddOutFrame(requestID, flags) {
+			err = ErrWriteAfterCloseSelf
+			return
+		}
+	}
+
+	_, err = conn.fbw.Write(dfw.GetWbuf())
+	if err != nil {
+		LogError("clientconn Write", err)
+		conn.loopCancelCtx()
+		return err
+	}
+
+	return
 }
 
 // ResetFrame resets a stream by requestID
@@ -508,49 +545,5 @@ func (conn *Connection) handleRequestPanic(frame *RequestFrame, begin time.Time)
 }
 
 func (conn *Connection) getWriter() FrameWriter {
-	return newFrameWriter(conn.loopCtx, conn.writeFrameCh)
-}
-
-func (conn *Connection) writeFrames() (err error) {
-
-	defer conn.loopCancelCtx()
-
-	writer := NewWriterWithTimeout(conn.loopCtx, conn.rwc, conn.conf.WriteTimeout)
-
-	for {
-		select {
-		case res := <-conn.writeFrameCh:
-			dfw := res.dfw
-			flags := dfw.Flags()
-			requestID := dfw.RequestID()
-
-			if flags.IsRst() {
-				s := conn.cs.GetStream(requestID, flags)
-				if s == nil {
-					res.result <- ErrRstNonExistingStream
-					break
-				}
-				// for rst frame, AddOutFrame returns false when no need to send the frame
-				if !s.AddOutFrame(requestID, flags) {
-					res.result <- nil
-					break
-				}
-			} else if !flags.IsPush() { // skip stream logic if PushFlag set
-				s, _ := conn.cs.CreateOrGetStream(conn.loopCtx, requestID, flags)
-				if !s.AddOutFrame(requestID, flags) {
-					res.result <- ErrWriteAfterCloseSelf
-					break
-				}
-			}
-
-			_, err := writer.Write(dfw.GetWbuf())
-			res.result <- err
-			if err != nil {
-				LogError("clientconn Write", err)
-				return err
-			}
-		case <-conn.loopCtx.Done():
-			return conn.loopCtx.Err()
-		}
-	}
+	return newFrameWriter(conn)
 }
