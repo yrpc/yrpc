@@ -163,7 +163,7 @@ func (srv *Server) ListenAndServe() (err error) {
 		yln = srv.conf.OverlayNetwork(rawln)
 	} else {
 		println("setting conf.ln to tcp listener")
-		yln = rawln.(*net.TCPListener)
+		yln = rawln.(Listener) //(*net.TCPListener)
 	}
 
 	return srv.Serve(yln)
