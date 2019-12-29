@@ -1,13 +1,13 @@
-module github.com/zhiqiangxu/qrpc
+module github.com/yrpc/yrpc
 
-go 1.12
+go 1.14
 
 require (
+	github.com/VividCortex/gohistogram v1.0.0 // indirect
 	github.com/go-kit/kit v0.9.0
 	github.com/gorilla/websocket v1.4.1
 	github.com/oklog/run v1.0.0
-	github.com/zhiqiangxu/go-reuseport v0.2.1
-	github.com/zhiqiangxu/util v0.0.0-20191224134344-a62615755cd7
+	github.com/yrpc/util v0.0.0-20191229105456-04e44c1bb858 // indirect
 	go.uber.org/ratelimit v0.1.0
 	go.uber.org/zap v1.13.0
 	google.golang.org/grpc v1.26.0

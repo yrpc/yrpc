@@ -3,7 +3,7 @@ package qrpc
 import (
 	"fmt"
 
-	"github.com/zhiqiangxu/util/logger"
+	"github.com/yrpc/util/logger"
 	"go.uber.org/zap"
 )
 
