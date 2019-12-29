@@ -45,7 +45,7 @@ func startServerForWSOverlay() {
 		}
 	})
 	bindings := []qrpc.ServerBinding{
-		qrpc.ServerBinding{Addr: addr, Handler: handler}}
+		{Addr: addr, Handler: handler}}
 	server := server.New(bindings)
 	err := server.ListenAndServe()
 	if err != nil {
