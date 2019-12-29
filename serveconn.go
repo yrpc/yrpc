@@ -385,8 +385,6 @@ func (sc *serveconn) readFrames() (err error) {
 				return ctx.Err()
 			}
 		}
-
-		sc.server.waitThrottle(sc.idx, ctx.Done())
 	}
 
 }
