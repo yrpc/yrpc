@@ -98,9 +98,15 @@ func (r *response) Close() {
 func NewConnection(addr string, conf ConnectionConfig, f SubFunc) (conn *Connection, err error) {
 	var rwc net.Conn
 	if conf.OverlayNetwork != nil {
-		rwc, err = conf.OverlayNetwork(addr, DialConfig{DialTimeout: conf.DialTimeout, WBufSize: conf.WBufSize, RBufSize: conf.RBufSize})
+		rwc, err = conf.OverlayNetwork(addr,
+			DialConfig{
+				DialTimeout: conf.DialTimeout,
+			})
 	} else {
-		rwc, err = dialTCP(addr, DialConfig{DialTimeout: conf.DialTimeout, WBufSize: conf.WBufSize, RBufSize: conf.RBufSize})
+		rwc, err = dialTCP(addr,
+			DialConfig{
+				DialTimeout: conf.DialTimeout,
+			})
 	}
 
 	if err != nil {
@@ -118,25 +124,6 @@ func dialTCP(addr string, dialConfig DialConfig) (rwc net.Conn, err error) {
 		l.Error("dialTCP addr", zap.String("addr", addr), zap.Error(err))
 		return
 	}
-
-	if dialConfig.RBufSize <= 0 && dialConfig.WBufSize <= 0 {
-		return
-	}
-
-	tc := rwc.(*net.TCPConn)
-	if dialConfig.RBufSize > 0 {
-		sockOptErr := tc.SetReadBuffer(dialConfig.RBufSize)
-		if sockOptErr != nil {
-			l.Error("SetReadBuffer", zap.Int("RBufSize", dialConfig.RBufSize), zap.Error(sockOptErr))
-		}
-	}
-	if dialConfig.WBufSize > 0 {
-		sockOptErr := tc.SetWriteBuffer(dialConfig.WBufSize)
-		if sockOptErr != nil {
-			l.Error("SetWriteBuffer", zap.Int("WBufSize", dialConfig.WBufSize), zap.Error(sockOptErr))
-		}
-	}
-
 	return
 }
 
@@ -155,9 +142,9 @@ func NewConnectionWithReconnect(addrs []string, conf ConnectionConfig, f SubFunc
 		err error
 	)
 	if conf.OverlayNetwork != nil {
-		rwc, err = conf.OverlayNetwork(copy[len(copy)-1], DialConfig{DialTimeout: conf.DialTimeout, WBufSize: conf.WBufSize, RBufSize: conf.RBufSize})
+		rwc, err = conf.OverlayNetwork(copy[len(copy)-1], DialConfig{DialTimeout: conf.DialTimeout})
 	} else {
-		rwc, err = dialTCP(copy[len(copy)-1], DialConfig{DialTimeout: conf.DialTimeout, WBufSize: conf.WBufSize, RBufSize: conf.RBufSize})
+		rwc, err = dialTCP(copy[len(copy)-1], DialConfig{DialTimeout: conf.DialTimeout})
 	}
 	if err != nil {
 		l.Error("initconnect DialTimeout", zap.Error(err))
@@ -251,9 +238,9 @@ func (conn *Connection) connect() error {
 			err error
 		)
 		if conn.conf.OverlayNetwork != nil {
-			rwc, err = conn.conf.OverlayNetwork(addr, DialConfig{DialTimeout: conn.conf.DialTimeout, WBufSize: conn.conf.WBufSize, RBufSize: conn.conf.RBufSize})
+			rwc, err = conn.conf.OverlayNetwork(addr, DialConfig{DialTimeout: conn.conf.DialTimeout})
 		} else {
-			rwc, err = dialTCP(addr, DialConfig{DialTimeout: conn.conf.DialTimeout, WBufSize: conn.conf.WBufSize, RBufSize: conn.conf.RBufSize})
+			rwc, err = dialTCP(addr, DialConfig{DialTimeout: conn.conf.DialTimeout})
 		}
 
 		if err != nil {

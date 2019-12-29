@@ -338,7 +338,7 @@ func startServer() {
 		}
 	})
 	bindings := []yrpc.ServerBinding{
-		{Addr: addr, Handler: handler, ReadFrameChSize: 10000, WriteFrameChSize: 1000, WBufSize: 2000000, RBufSize: 2000000}}
+		{Addr: addr, Handler: handler, ReadFrameChSize: 10000, WriteFrameChSize: 1000}}
 	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
 	if err != nil {

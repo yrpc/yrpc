@@ -26,22 +26,6 @@ func DialConn(address string, dialConfig yrpc.DialConfig) (nc net.Conn, err erro
 				yrpc.Logger().Error("DialConn net.DialTimeout", zap.String("addr", addr), zap.Error(err))
 				return
 			}
-			if dialConfig.RBufSize <= 0 && dialConfig.WBufSize <= 0 {
-				return
-			}
-			tc := conn.(*net.TCPConn)
-			if dialConfig.RBufSize > 0 {
-				sockOptErr := tc.SetReadBuffer(dialConfig.RBufSize)
-				if sockOptErr != nil {
-					yrpc.Logger().Error("SetReadBuffer", zap.Int("RBufSize", dialConfig.RBufSize), zap.Error(sockOptErr))
-				}
-			}
-			if dialConfig.WBufSize > 0 {
-				sockOptErr := tc.SetWriteBuffer(dialConfig.WBufSize)
-				if sockOptErr != nil {
-					yrpc.Logger().Error("SetWriteBuffer", zap.Int("WBufSize", dialConfig.WBufSize), zap.Error(sockOptErr))
-				}
-			}
 			return
 		},
 	}
