@@ -159,7 +159,7 @@ func (sc *serveconn) serve() {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			l.Error("connection panic", zap.String("ip", sc.RemoteAddr()), zap.String("stack", String(buf)), zap.Any("err", err))
+			l.Error("connection panic", zap.String("ip", sc.RemoteAddr()), zap.String("stack", string(buf)), zap.Any("err", err))
 		}
 		sc.Close()
 		sc.wg.Wait()
@@ -241,7 +241,7 @@ func (sc *serveconn) handleRequestPanic(frame *RequestFrame, begin time.Time) {
 		const size = 64 << 10
 		buf := make([]byte, size)
 		buf = buf[:runtime.Stack(buf, false)]
-		l.Error("handleRequestPanic", zap.String("ip", sc.RemoteAddr()), zap.String("stack", String(buf)), zap.Any("err", err))
+		l.Error("handleRequestPanic", zap.String("ip", sc.RemoteAddr()), zap.String("stack", string(buf)), zap.Any("err", err))
 
 	}
 

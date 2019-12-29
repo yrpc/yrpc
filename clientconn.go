@@ -503,7 +503,7 @@ func (conn *Connection) handleRequestPanic(frame *RequestFrame, begin time.Time)
 		const size = 64 << 10
 		buf := make([]byte, size)
 		buf = buf[:runtime.Stack(buf, false)]
-		l.Error("Connection.handleRequestPanic", zap.String("stack", String(buf)), zap.Any("err", err))
+		l.Error("Connection.handleRequestPanic", zap.String("stack", string(buf)), zap.Any("err", err))
 	}
 
 	s := frame.Stream
