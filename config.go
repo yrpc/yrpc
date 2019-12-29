@@ -7,8 +7,8 @@ import (
 	"github.com/go-kit/kit/metrics"
 )
 
-// ServerBinding contains binding infos
-type ServerBinding struct {
+// ServerConfig contains binding infos
+type ServerConfig struct {
 	Addr                string
 	Handler             Handler // handler to invoke
 	DefaultReadTimeout  int
@@ -28,8 +28,8 @@ type ServerBinding struct {
 // SubFunc for subscribe callback
 type SubFunc func(*Connection, *Frame)
 
-// ConnectionConfig is conf for Connection
-type ConnectionConfig struct {
+// ClientConfig is conf for Connection
+type ClientConfig struct {
 	WriteTimeout     int
 	ReadTimeout      int
 	DialTimeout      time.Duration

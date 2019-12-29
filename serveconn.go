@@ -161,15 +161,15 @@ func (sc *serveconn) serve() {
 		sc.wg.Wait()
 	}()
 
-	binding := sc.server.binding
+	conf := sc.server.conf
 	var maxFrameSize int
-	if binding.MaxFrameSize > 0 {
-		maxFrameSize = binding.MaxFrameSize
+	if conf.MaxFrameSize > 0 {
+		maxFrameSize = conf.MaxFrameSize
 	} else {
 		maxFrameSize = DefaultMaxFrameSize
 	}
 	ctx := sc.ctx
-	sc.reader = newFrameReaderWithMFS(ctx, sc.rwc, binding.DefaultReadTimeout, maxFrameSize)
+	sc.reader = newFrameReaderWithMFS(ctx, sc.rwc, conf.DefaultReadTimeout, maxFrameSize)
 	sc.writer = newFrameWriter(sc) // only used by blocking mode
 
 	sc.inflight = 1
@@ -177,7 +177,7 @@ func (sc *serveconn) serve() {
 		sc.readFrames()
 	})
 
-	handler := binding.Handler
+	handler := conf.Handler
 
 	for {
 		select {
@@ -206,25 +206,25 @@ func (sc *serveconn) serve() {
 }
 
 func (sc *serveconn) instrument(frame *RequestFrame, begin time.Time, err interface{}) {
-	binding := sc.server.binding
+	conf := sc.server.conf
 
-	if binding.CounterMetric == nil && binding.LatencyMetric == nil {
+	if conf.CounterMetric == nil && conf.LatencyMetric == nil {
 		return
 	}
 
 	errStr := fmt.Sprintf("%v", err)
-	if binding.CounterMetric != nil {
+	if conf.CounterMetric != nil {
 		countlvs := []string{"method", strconv.Itoa(int(frame.Cmd)), "error", errStr}
-		binding.CounterMetric.With(countlvs...).Add(1)
+		conf.CounterMetric.With(countlvs...).Add(1)
 	}
 
-	if binding.LatencyMetric == nil {
+	if conf.LatencyMetric == nil {
 		return
 	}
 
 	lvs := []string{"method", strconv.Itoa(int(frame.Cmd)), "error", errStr}
 
-	binding.LatencyMetric.With(lvs...).Observe(time.Since(begin).Seconds())
+	conf.LatencyMetric.With(lvs...).Observe(time.Since(begin).Seconds())
 
 }
 
@@ -299,8 +299,8 @@ func (sc *serveconn) readFrames() (err error) {
 	ci := sc.ctx.Value(ConnectionInfoKey).(*ConnectionInfo)
 
 	ctx := sc.ctx
-	binding := sc.server.binding
-	if binding.ReadFrameChSize > 0 {
+	conf := sc.server.conf
+	if conf.ReadFrameChSize > 0 {
 		runtime.LockOSThread()
 	}
 
@@ -311,19 +311,19 @@ func (sc *serveconn) readFrames() (err error) {
 			l.Error("ErrFrameTooLarge", zap.String("ip", sc.RemoteAddr()))
 		}
 
-		if binding.CounterMetric != nil {
+		if conf.CounterMetric != nil {
 			errStr := fmt.Sprintf("%v", err)
 			if err != nil {
-				if binding.OverlayNetwork != nil {
+				if conf.OverlayNetwork != nil {
 					l.Error("readFrames", zap.Any("type", reflect.TypeOf(err)), zap.Error(err))
 					errStr = errStrReadFramesForOverlayNetwork
 				}
 			}
 
 			countlvs := []string{"method", "readFrames", "error", errStr}
-			binding.CounterMetric.With(countlvs...).Add(1)
+			conf.CounterMetric.With(countlvs...).Add(1)
 		}
-		if binding.ReadFrameChSize > 0 {
+		if conf.ReadFrameChSize > 0 {
 			runtime.UnlockOSThread()
 		}
 	}()
@@ -428,20 +428,20 @@ func (sc *serveconn) writeFrameBytes(dfw *defaultFrameWriter) (err error) {
 			}
 		}
 
-		binding := sc.server.binding
+		conf := sc.server.conf
 		var releaseWlock bool
 		defer func() {
 
 			sc.tryFreeStreams()
 
 			if err != nil {
-				if binding.CounterMetric != nil {
+				if conf.CounterMetric != nil {
 					errStr := fmt.Sprintf("%v", err)
-					if binding.OverlayNetwork != nil {
+					if conf.OverlayNetwork != nil {
 						errStr = errStrWriteFramesForOverlayNetwork
 					}
 					countlvs := []string{"method", "writeFrames", "error", errStr}
-					binding.CounterMetric.With(countlvs...).Add(1)
+					conf.CounterMetric.With(countlvs...).Add(1)
 				}
 			}
 
@@ -453,7 +453,7 @@ func (sc *serveconn) writeFrameBytes(dfw *defaultFrameWriter) (err error) {
 		sc.cachedBuffs = sc.cachedBuffs[:0]
 		sc.cachedRequests = sc.cachedRequests[:0]
 
-		err = sc.collectWriteFrames(binding.WriteFrameChSize)
+		err = sc.collectWriteFrames(conf.WriteFrameChSize)
 		if err != nil {
 			l.Debug("sc.collectWriteFrames", zap.Uintptr("sc", uintptr(unsafe.Pointer(sc))), zap.Error(err))
 			return

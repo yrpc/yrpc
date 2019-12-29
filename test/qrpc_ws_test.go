@@ -12,7 +12,7 @@ import (
 func TestWSOverlay(t *testing.T) {
 	go startServerForWSOverlay()
 
-	conf := yrpc.ConnectionConfig{}
+	conf := yrpc.ClientConfig{}
 
 	conn, err := client.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println("pushed", frame)
@@ -44,7 +44,7 @@ func startServerForWSOverlay() {
 			fmt.Println("EndWrite", err)
 		}
 	})
-	bindings := []yrpc.ServerBinding{
+	bindings := []yrpc.ServerConfig{
 		{Addr: addr, Handler: handler}}
 	server := server.New(bindings)
 	err := server.ListenAndServe()

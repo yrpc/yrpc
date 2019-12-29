@@ -106,8 +106,8 @@ func (mux *ServeMux) ServeQRPC(w FrameWriter, r *RequestFrame) {
 // Server defines parameters for running an qrpc server.
 type Server struct {
 	// one handler for each listening address
-	binding ServerBinding
-	upTime  time.Time
+	conf   ServerConfig
+	upTime time.Time
 
 	// manages below
 	mu           sync.Mutex
@@ -126,52 +126,52 @@ type Server struct {
 }
 
 // NewServer creates a server
-func NewServer(binding ServerBinding) *Server {
+func NewServer(conf ServerConfig) *Server {
 	var closeRateLimiter ratelimit.Limiter
-	if binding.MaxCloseRate != 0 {
-		closeRateLimiter = ratelimit.New(binding.MaxCloseRate)
+	if conf.MaxCloseRate != 0 {
+		closeRateLimiter = ratelimit.New(conf.MaxCloseRate)
 	}
-	if binding.WriteFrameChSize < 1 {
+	if conf.WriteFrameChSize < 1 {
 		// at least 1 for WriteFrameChSize
-		binding.WriteFrameChSize = 1
+		conf.WriteFrameChSize = 1
 	}
 	return &Server{
-		binding:          binding,
+		conf:             conf,
 		upTime:           time.Now(),
 		doneChan:         make(chan struct{}),
 		closeRateLimiter: closeRateLimiter,
 	}
 }
 
-// ListenAndServe starts listening on all bindings
+// ListenAndServe starts listening on all conf
 func (srv *Server) ListenAndServe() (err error) {
 	var (
 		rawln net.Listener
 		yln   Listener
 	)
 
-	if srv.binding.ListenFunc != nil {
-		rawln, err = srv.binding.ListenFunc("tcp", srv.binding.Addr)
+	if srv.conf.ListenFunc != nil {
+		rawln, err = srv.conf.ListenFunc("tcp", srv.conf.Addr)
 	} else {
-		rawln, err = net.Listen("tcp", srv.binding.Addr)
+		rawln, err = net.Listen("tcp", srv.conf.Addr)
 	}
 	if err != nil {
 		return err
 	}
 
-	if srv.binding.OverlayNetwork != nil {
-		yln = srv.binding.OverlayNetwork(rawln)
+	if srv.conf.OverlayNetwork != nil {
+		yln = srv.conf.OverlayNetwork(rawln)
 	} else {
-		println("setting binding.ln to tcp listener")
+		println("setting conf.ln to tcp listener")
 		yln = rawln.(*net.TCPListener)
 	}
 
 	return srv.Serve(yln)
 }
 
-// BindingConfig for retrieve ServerBinding
-func (srv *Server) BindingConfig() ServerBinding {
-	return srv.binding
+// BindingConfig for retrieve ServerConfig
+func (srv *Server) BindingConfig() ServerConfig {
+	return srv.conf
 }
 
 // Listener defines required listener methods for qrpc
@@ -298,10 +298,10 @@ func (srv *Server) newConn(ctx context.Context, rwc net.Conn) (sc *serveconn) {
 		rwc:            rwc,
 		untrackedCh:    make(chan struct{}),
 		cs:             &ConnStreams{},
-		readFrameCh:    make(chan readFrameResult, srv.binding.ReadFrameChSize),
-		writeFrameCh:   make(chan *writeFrameRequest, srv.binding.WriteFrameChSize),
-		cachedRequests: make([]*writeFrameRequest, 0, srv.binding.WriteFrameChSize),
-		cachedBuffs:    make(net.Buffers, 0, srv.binding.WriteFrameChSize),
+		readFrameCh:    make(chan readFrameResult, srv.conf.ReadFrameChSize),
+		writeFrameCh:   make(chan *writeFrameRequest, srv.conf.WriteFrameChSize),
+		cachedRequests: make([]*writeFrameRequest, 0, srv.conf.WriteFrameChSize),
+		cachedBuffs:    make(net.Buffers, 0, srv.conf.WriteFrameChSize),
 		wlockCh:        make(chan struct{}, 1)}
 
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -309,7 +309,7 @@ func (srv *Server) newConn(ctx context.Context, rwc net.Conn) (sc *serveconn) {
 
 	sc.cancelCtx = cancelCtx
 	sc.ctx = ctx
-	sc.bytesWriter = NewWriterWithTimeout(ctx, rwc, srv.binding.DefaultWriteTimeout)
+	sc.bytesWriter = NewWriterWithTimeout(ctx, rwc, srv.conf.DefaultWriteTimeout)
 
 	srv.activeConn.Store(sc, struct{}{})
 
@@ -343,10 +343,10 @@ check:
 			}
 		}
 
-		if srv.binding.CounterMetric != nil {
+		if srv.conf.CounterMetric != nil {
 			errStr := fmt.Sprintf("%v", err)
 			countlvs := []string{"method", "kickoff", "error", errStr}
-			srv.binding.CounterMetric.With(countlvs...).Add(1)
+			srv.conf.CounterMetric.With(countlvs...).Add(1)
 		}
 
 		atomic.AddUint64(&kickOrder, 1)
@@ -373,8 +373,8 @@ func (srv *Server) untrack(sc *serveconn, kicked bool) (bool, <-chan struct{}) {
 	srv.activeConn.Delete(sc)
 
 	if kicked {
-		if srv.binding.OnKickCB != nil {
-			srv.binding.OnKickCB(sc.GetWriter())
+		if srv.conf.OnKickCB != nil {
+			srv.conf.OnKickCB(sc.GetWriter())
 		}
 	}
 	close(sc.untrackedCh)

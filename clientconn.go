@@ -24,7 +24,7 @@ type Connection struct {
 	// immutable
 	addrs      []string
 	reconnect  bool
-	conf       ConnectionConfig
+	conf       ClientConfig
 	subscriber SubFunc // there can be only one subscriber because of streamed frames
 
 	writeFrameCh chan *writeFrameRequest // it's never closed so won't panic
@@ -95,7 +95,7 @@ func (r *response) Close() {
 }
 
 // NewConnection constructs a *Connection without reconnect ability
-func NewConnection(addr string, conf ConnectionConfig, f SubFunc) (conn *Connection, err error) {
+func NewConnection(addr string, conf ClientConfig, f SubFunc) (conn *Connection, err error) {
 	var rwc net.Conn
 	if conf.OverlayNetwork != nil {
 		rwc, err = conf.OverlayNetwork(addr,
@@ -128,7 +128,7 @@ func dialTCP(addr string, dialConfig DialConfig) (rwc net.Conn, err error) {
 }
 
 // NewConnectionWithReconnect constructs a *Connection with reconnect ability
-func NewConnectionWithReconnect(addrs []string, conf ConnectionConfig, f SubFunc) *Connection {
+func NewConnectionWithReconnect(addrs []string, conf ClientConfig, f SubFunc) *Connection {
 	var copy []string
 	for _, addr := range addrs {
 		copy = append(copy, addr)
@@ -162,7 +162,7 @@ type ClientConnectionInfo struct {
 	CC *Connection
 }
 
-func newConnection(rwc net.Conn, addr []string, conf ConnectionConfig, f SubFunc, reconnect bool) *Connection {
+func newConnection(rwc net.Conn, addr []string, conf ClientConfig, f SubFunc, reconnect bool) *Connection {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
 	c := &Connection{

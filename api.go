@@ -26,7 +26,7 @@ type API interface {
 }
 
 // NewAPI creates an API instance
-func NewAPI(endpoints []string, conf ConnectionConfig, weights []int) API {
+func NewAPI(endpoints []string, conf ClientConfig, weights []int) API {
 	var totalWeight int
 	if weights == nil {
 		weights = make([]int, len(endpoints))
@@ -67,7 +67,7 @@ type defaultAPI struct {
 	weights     []int
 	idxMap      map[string]int
 	totalWeight int
-	conf        ConnectionConfig
+	conf        ClientConfig
 
 	activeConns sync.Map // map[*Connection]int
 	conns       sync.Map // map[int]*Connection

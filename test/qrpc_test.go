@@ -31,7 +31,7 @@ func TestNonStream(t *testing.T) {
 	go startServer()
 	time.Sleep(time.Second * 2)
 
-	conf := yrpc.ConnectionConfig{}
+	conf := yrpc.ClientConfig{}
 
 	conn, err := yrpc.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println(frame)
@@ -59,7 +59,7 @@ func TestCancel(t *testing.T) {
 	go startServerForCancel()
 	time.Sleep(time.Second * 2)
 
-	conf := yrpc.ConnectionConfig{}
+	conf := yrpc.ClientConfig{}
 
 	conn, err := yrpc.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println(frame)
@@ -102,7 +102,7 @@ func TestPerformance(t *testing.T) {
 	time.Sleep(time.Second)
 	go startServer()
 	time.Sleep(time.Second)
-	conn, err := yrpc.NewConnection(addr, yrpc.ConnectionConfig{WriteFrameChSize: 1000}, nil)
+	conn, err := yrpc.NewConnection(addr, yrpc.ClientConfig{WriteFrameChSize: 1000}, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -148,7 +148,7 @@ func TestAPI(t *testing.T) {
 	}()
 
 	go startServer()
-	api := yrpc.NewAPI([]string{addr}, yrpc.ConnectionConfig{}, nil)
+	api := yrpc.NewAPI([]string{addr}, yrpc.ClientConfig{}, nil)
 	i := 0
 	var wg sync.WaitGroup
 	startTime := time.Now()
@@ -195,7 +195,7 @@ func TestPerformanceShort(t *testing.T) {
 
 	for {
 		yrpc.GoFunc(&wg, func() {
-			conn, err := yrpc.NewConnection(addr, yrpc.ConnectionConfig{}, nil)
+			conn, err := yrpc.NewConnection(addr, yrpc.ClientConfig{}, nil)
 			if err != nil {
 				panic(err)
 			}
@@ -337,7 +337,7 @@ func startServer() {
 			panic(err)
 		}
 	})
-	bindings := []yrpc.ServerBinding{
+	bindings := []yrpc.ServerConfig{
 		{Addr: addr, Handler: handler, ReadFrameChSize: 10000, WriteFrameChSize: 1000}}
 	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
@@ -391,7 +391,7 @@ func startServerForCancel() {
 			}
 		}
 	})
-	bindings := []yrpc.ServerBinding{
+	bindings := []yrpc.ServerConfig{
 		{Addr: addr, Handler: handler}}
 	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
@@ -406,7 +406,7 @@ func TestClientHandler(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	conf := yrpc.ConnectionConfig{Handler: yrpc.HandlerFunc(func(w yrpc.FrameWriter, frame *yrpc.RequestFrame) {
+	conf := yrpc.ClientConfig{Handler: yrpc.HandlerFunc(func(w yrpc.FrameWriter, frame *yrpc.RequestFrame) {
 		w.StartWrite(frame.RequestID, ClientRespCmd, 0)
 		w.WriteBytes([]byte("client resp"))
 		w.EndWrite()
@@ -441,7 +441,7 @@ func startServerForClientHandler() {
 		writer.WriteBytes(frame.Payload)
 		writer.EndWrite()
 	})
-	bindings := []yrpc.ServerBinding{
+	bindings := []yrpc.ServerConfig{
 		{Addr: addr, Handler: handler}}
 	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
