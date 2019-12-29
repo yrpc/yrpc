@@ -1,4 +1,4 @@
-package qrpc
+package yrpc
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-/* api provides utilities for make nonblocking api calls with qrpc.Connection */
+/* api provides utilities for make nonblocking api calls with yrpc.Connection */
 
 // API for non blocking roundtrip calls
 type API interface {

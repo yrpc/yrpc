@@ -31,16 +31,16 @@ func TestNonStream(t *testing.T) {
 	go startServer()
 	time.Sleep(time.Second * 2)
 
-	conf := qrpc.ConnectionConfig{}
+	conf := yrpc.ConnectionConfig{}
 
-	conn, err := qrpc.NewConnection(addr, conf, func(conn *qrpc.Connection, frame *qrpc.Frame) {
+	conn, err := yrpc.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println(frame)
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	for _, flag := range []qrpc.FrameFlag{0, qrpc.NBFlag} {
+	for _, flag := range []yrpc.FrameFlag{0, yrpc.NBFlag} {
 		_, resp, err := conn.Request(HelloCmd, flag, []byte("xu"))
 		if err != nil {
 			panic(err)
@@ -59,16 +59,16 @@ func TestCancel(t *testing.T) {
 	go startServerForCancel()
 	time.Sleep(time.Second * 2)
 
-	conf := qrpc.ConnectionConfig{}
+	conf := yrpc.ConnectionConfig{}
 
-	conn, err := qrpc.NewConnection(addr, conf, func(conn *qrpc.Connection, frame *qrpc.Frame) {
+	conn, err := yrpc.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println(frame)
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	requestID, resp, err := conn.Request(HelloCmd, qrpc.NBFlag, []byte("xu"))
+	requestID, resp, err := conn.Request(HelloCmd, yrpc.NBFlag, []byte("xu"))
 	if err != nil {
 		panic(err)
 	}
@@ -102,7 +102,7 @@ func TestPerformance(t *testing.T) {
 	time.Sleep(time.Second)
 	go startServer()
 	time.Sleep(time.Second)
-	conn, err := qrpc.NewConnection(addr, qrpc.ConnectionConfig{WriteFrameChSize: 1000}, nil)
+	conn, err := yrpc.NewConnection(addr, yrpc.ConnectionConfig{WriteFrameChSize: 1000}, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -111,8 +111,8 @@ func TestPerformance(t *testing.T) {
 	startTime := time.Now()
 	for {
 
-		qrpc.GoFunc(&wg, func() {
-			_, resp, err := conn.Request(HelloCmd, qrpc.NBFlag, []byte("xu"))
+		yrpc.GoFunc(&wg, func() {
+			_, resp, err := conn.Request(HelloCmd, yrpc.NBFlag, []byte("xu"))
 			if err != nil {
 				panic(err)
 			}
@@ -148,12 +148,12 @@ func TestAPI(t *testing.T) {
 	}()
 
 	go startServer()
-	api := qrpc.NewAPI([]string{addr}, qrpc.ConnectionConfig{}, nil)
+	api := yrpc.NewAPI([]string{addr}, yrpc.ConnectionConfig{}, nil)
 	i := 0
 	var wg sync.WaitGroup
 	startTime := time.Now()
 	for {
-		qrpc.GoFunc(&wg, func() {
+		yrpc.GoFunc(&wg, func() {
 			frame, err := api.Call(context.Background(), HelloCmd, []byte("xu"))
 			if err != nil {
 				panic(err)
@@ -194,13 +194,13 @@ func TestPerformanceShort(t *testing.T) {
 	startTime := time.Now()
 
 	for {
-		qrpc.GoFunc(&wg, func() {
-			conn, err := qrpc.NewConnection(addr, qrpc.ConnectionConfig{}, nil)
+		yrpc.GoFunc(&wg, func() {
+			conn, err := yrpc.NewConnection(addr, yrpc.ConnectionConfig{}, nil)
 			if err != nil {
 				panic(err)
 			}
 			defer conn.Close()
-			_, resp, err := conn.Request(HelloCmd, qrpc.NBFlag, []byte("xu"))
+			_, resp, err := conn.Request(HelloCmd, yrpc.NBFlag, []byte("xu"))
 			if err != nil {
 				panic(err)
 			}
@@ -277,7 +277,7 @@ func TestGRPCPerformance(t *testing.T) {
 	i := 0
 	var wg sync.WaitGroup
 	for {
-		qrpc.GoFunc(&wg, func() {
+		yrpc.GoFunc(&wg, func() {
 			_, err := c.SayHello(context.Background(), &pb.HelloRequest{Name: name})
 			if err != nil {
 				panic(err)
@@ -319,15 +319,15 @@ func startGRPCServer() {
 }
 
 const (
-	HelloCmd qrpc.Cmd = iota
+	HelloCmd yrpc.Cmd = iota
 	HelloRespCmd
 	ClientCmd
 	ClientRespCmd
 )
 
 func startServer() {
-	handler := qrpc.NewServeMux()
-	handler.HandleFunc(HelloCmd, func(writer qrpc.FrameWriter, request *qrpc.RequestFrame) {
+	handler := yrpc.NewServeMux()
+	handler.HandleFunc(HelloCmd, func(writer yrpc.FrameWriter, request *yrpc.RequestFrame) {
 		// time.Sleep(time.Hour)
 		writer.StartWrite(request.RequestID, HelloRespCmd, 0)
 
@@ -337,9 +337,9 @@ func startServer() {
 			panic(err)
 		}
 	})
-	bindings := []qrpc.ServerBinding{
+	bindings := []yrpc.ServerBinding{
 		{Addr: addr, Handler: handler, ReadFrameChSize: 10000, WriteFrameChSize: 1000, WBufSize: 2000000, RBufSize: 2000000}}
-	server := qrpc.NewServer(bindings)
+	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
 	if err != nil {
 		panic(err)
@@ -377,8 +377,8 @@ func (b *BaseResp) SetError(err error) {
 }
 
 func startServerForCancel() {
-	handler := qrpc.NewServeMux()
-	handler.HandleFunc(HelloCmd, func(writer qrpc.FrameWriter, request *qrpc.RequestFrame) {
+	handler := yrpc.NewServeMux()
+	handler.HandleFunc(HelloCmd, func(writer yrpc.FrameWriter, request *yrpc.RequestFrame) {
 		// time.Sleep(time.Hour)
 		select {
 		case <-request.Context().Done():
@@ -391,9 +391,9 @@ func startServerForCancel() {
 			}
 		}
 	})
-	bindings := []qrpc.ServerBinding{
+	bindings := []yrpc.ServerBinding{
 		{Addr: addr, Handler: handler}}
-	server := qrpc.NewServer(bindings)
+	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Println("ListenAndServe", err)
@@ -406,20 +406,20 @@ func TestClientHandler(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	conf := qrpc.ConnectionConfig{Handler: qrpc.HandlerFunc(func(w qrpc.FrameWriter, frame *qrpc.RequestFrame) {
+	conf := yrpc.ConnectionConfig{Handler: yrpc.HandlerFunc(func(w yrpc.FrameWriter, frame *yrpc.RequestFrame) {
 		w.StartWrite(frame.RequestID, ClientRespCmd, 0)
 		w.WriteBytes([]byte("client resp"))
 		w.EndWrite()
 	})}
 
-	conn, err := qrpc.NewConnection(addr, conf, func(conn *qrpc.Connection, frame *qrpc.Frame) {
+	conn, err := yrpc.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println(string(frame.Payload))
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	_, resp, err := conn.Request(HelloCmd, qrpc.NBFlag, []byte("xu "))
+	_, resp, err := conn.Request(HelloCmd, yrpc.NBFlag, []byte("xu "))
 	if err != nil {
 		panic(err)
 	}
@@ -432,8 +432,8 @@ func TestClientHandler(t *testing.T) {
 }
 
 func startServerForClientHandler() {
-	handler := qrpc.NewServeMux()
-	handler.HandleFunc(HelloCmd, func(writer qrpc.FrameWriter, request *qrpc.RequestFrame) {
+	handler := yrpc.NewServeMux()
+	handler.HandleFunc(HelloCmd, func(writer yrpc.FrameWriter, request *yrpc.RequestFrame) {
 		_, resp, _ := request.ConnectionInfo().SC.Request(ClientCmd, 0, nil)
 		frame, _ := resp.GetFrame()
 		writer.StartWrite(request.RequestID, HelloRespCmd, 0)
@@ -441,9 +441,9 @@ func startServerForClientHandler() {
 		writer.WriteBytes(frame.Payload)
 		writer.EndWrite()
 	})
-	bindings := []qrpc.ServerBinding{
+	bindings := []yrpc.ServerBinding{
 		{Addr: addr, Handler: handler}}
-	server := qrpc.NewServer(bindings)
+	server := yrpc.NewServer(bindings)
 	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Println("ListenAndServe", err)

@@ -4,10 +4,10 @@ import (
 	"github.com/yrpc/yrpc"
 )
 
-// New is a wrapper for qrpc.NewServer
-func New(bindings []qrpc.ServerBinding) *qrpc.Server {
+// New is a wrapper for yrpc.NewServer
+func New(bindings []yrpc.ServerBinding) *yrpc.Server {
 	for i := range bindings {
 		bindings[i].OverlayNetwork = OverlayNetwork
 	}
-	return qrpc.NewServer(bindings)
+	return yrpc.NewServer(bindings)
 }

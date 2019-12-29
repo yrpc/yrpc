@@ -12,16 +12,16 @@ import (
 func TestWSOverlay(t *testing.T) {
 	go startServerForWSOverlay()
 
-	conf := qrpc.ConnectionConfig{}
+	conf := yrpc.ConnectionConfig{}
 
-	conn, err := client.NewConnection(addr, conf, func(conn *qrpc.Connection, frame *qrpc.Frame) {
+	conn, err := client.NewConnection(addr, conf, func(conn *yrpc.Connection, frame *yrpc.Frame) {
 		fmt.Println("pushed", frame)
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	_, resp, err := conn.Request(HelloCmd, qrpc.NBFlag, []byte("xu"))
+	_, resp, err := conn.Request(HelloCmd, yrpc.NBFlag, []byte("xu"))
 	if err != nil {
 		panic(err)
 	}
@@ -34,8 +34,8 @@ func TestWSOverlay(t *testing.T) {
 }
 
 func startServerForWSOverlay() {
-	handler := qrpc.NewServeMux()
-	handler.HandleFunc(HelloCmd, func(writer qrpc.FrameWriter, request *qrpc.RequestFrame) {
+	handler := yrpc.NewServeMux()
+	handler.HandleFunc(HelloCmd, func(writer yrpc.FrameWriter, request *yrpc.RequestFrame) {
 		writer.StartWrite(request.RequestID, HelloRespCmd, 0)
 
 		writer.WriteBytes(append([]byte("hello world for ws overlay"), request.Payload...))
@@ -44,7 +44,7 @@ func startServerForWSOverlay() {
 			fmt.Println("EndWrite", err)
 		}
 	})
-	bindings := []qrpc.ServerBinding{
+	bindings := []yrpc.ServerBinding{
 		{Addr: addr, Handler: handler}}
 	server := server.New(bindings)
 	err := server.ListenAndServe()

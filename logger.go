@@ -1,4 +1,4 @@
-package qrpc
+package yrpc
 
 import (
 	"fmt"
@@ -38,7 +38,7 @@ func init() {
 		}
 		l, err = logger.New(config)
 		if err != nil {
-			panic(fmt.Sprintf("qrpc.zap.Build:%v", err))
+			panic(fmt.Sprintf("yrpc.zap.Build:%v", err))
 		}
 	}
 }

@@ -7,6 +7,6 @@ import (
 )
 
 // OverlayNetwork impl the overlay network for ws
-func OverlayNetwork(address string, dialConfig qrpc.DialConfig) (net.Conn, error) {
+func OverlayNetwork(address string, dialConfig yrpc.DialConfig) (net.Conn, error) {
 	return DialConn(address, dialConfig)
 }

@@ -16,7 +16,7 @@ const (
 )
 
 // OverlayNetwork impl the overlay network for ws
-func OverlayNetwork(l net.Listener) qrpc.Listener {
+func OverlayNetwork(l net.Listener) yrpc.Listener {
 	return newOverlay(l)
 }
 
@@ -43,7 +43,7 @@ func newOverlay(l net.Listener) (o *qrpcOverWS) {
 
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			qrpc.Logger().Error("upgrader.Upgrade", zap.Error(err))
+			yrpc.Logger().Error("upgrader.Upgrade", zap.Error(err))
 			return
 		}
 
@@ -66,7 +66,7 @@ func newOverlay(l net.Listener) (o *qrpcOverWS) {
 
 	go func() {
 		err := httpServer.Serve(l)
-		qrpc.Logger().Error("httpServer.Serve", zap.Error(err))
+		yrpc.Logger().Error("httpServer.Serve", zap.Error(err))
 	}()
 
 	return
@@ -94,7 +94,7 @@ func (o *qrpcOverWS) Accept() (conn net.Conn, err error) {
 			err = o.ctx.Err()
 			return
 		case <-ctx.Done():
-			err = qrpc.ErrAcceptTimedout
+			err = yrpc.ErrAcceptTimedout
 			return
 		}
 	}

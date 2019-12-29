@@ -1,4 +1,4 @@
-package qrpc
+package yrpc
 
 // Cmd is for multiplexer
 type Cmd uint32

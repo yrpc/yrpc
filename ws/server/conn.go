@@ -42,13 +42,13 @@ func (c *conn) Read(b []byte) (n int, err error) {
 				return
 			}
 		case msgType == websocket.PingMessage || msgType == websocket.PongMessage || msgType == websocket.TextMessage:
-			qrpc.Logger().Error("got ping/pong/text msg", zap.Int("msgType", msgType), zap.ByteString("msg", msg))
+			yrpc.Logger().Error("got ping/pong/text msg", zap.Int("msgType", msgType), zap.ByteString("msg", msg))
 			err = c.wc.Close()
 			if err != nil {
 				return
 			}
 		case len(msg) == 0:
-			qrpc.Logger().Error("msg length zero")
+			yrpc.Logger().Error("msg length zero")
 			continue
 		default:
 			c.buffer = msg

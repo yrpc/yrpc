@@ -1,4 +1,4 @@
-package qrpc
+package yrpc
 
 import (
 	"encoding/binary"
