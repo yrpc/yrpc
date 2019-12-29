@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/zhiqiangxu/qrpc"
+	"github.com/yrpc/yrpc"
 	"go.uber.org/zap"
 )
 

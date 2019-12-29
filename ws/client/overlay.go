@@ -3,7 +3,7 @@ package client
 import (
 	"net"
 
-	"github.com/zhiqiangxu/qrpc"
+	"github.com/yrpc/yrpc"
 )
 
 // OverlayNetwork impl the overlay network for ws

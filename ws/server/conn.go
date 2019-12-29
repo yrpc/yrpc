@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/zhiqiangxu/qrpc"
+	"github.com/yrpc/yrpc"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"

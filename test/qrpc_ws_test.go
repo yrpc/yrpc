@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/zhiqiangxu/qrpc"
-	"github.com/zhiqiangxu/qrpc/ws/client"
-	"github.com/zhiqiangxu/qrpc/ws/server"
+	"github.com/yrpc/yrpc"
+	"github.com/yrpc/yrpc/ws/client"
+	"github.com/yrpc/yrpc/ws/server"
 )
 
 func TestWSOverlay(t *testing.T) {

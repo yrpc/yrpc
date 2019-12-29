@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/zhiqiangxu/qrpc"
+	"github.com/yrpc/yrpc"
 )
 
 // New is a wrapper for qrpc.NewServer

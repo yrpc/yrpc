@@ -1,6 +1,6 @@
 package client
 
-import "github.com/zhiqiangxu/qrpc"
+import "github.com/yrpc/yrpc"
 
 // NewConnection is a wrapper for qrpc.NewConnection
 func NewConnection(addr string, conf qrpc.ConnectionConfig, f qrpc.SubFunc) (*qrpc.Connection, error) {

@@ -15,7 +15,7 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/zhiqiangxu/qrpc"
+	"github.com/yrpc/yrpc"
 	"google.golang.org/grpc"
 	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 )

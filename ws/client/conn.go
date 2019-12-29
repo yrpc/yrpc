@@ -4,9 +4,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/zhiqiangxu/qrpc"
+	"github.com/yrpc/yrpc"
 
-	"github.com/zhiqiangxu/qrpc/ws/server"
+	"github.com/yrpc/yrpc/ws/server"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
