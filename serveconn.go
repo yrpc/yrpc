@@ -33,8 +33,6 @@ type serveconn struct {
 	ctx context.Context
 	wg  sync.WaitGroup // wait group for goroutines
 
-	idx int
-
 	cs *ConnStreams
 
 	// rwc is the underlying network connection.
@@ -151,8 +149,6 @@ func (sc *serveconn) RemoteAddr() string {
 // Serve a new connection.
 func (sc *serveconn) serve() {
 
-	idx := sc.idx
-
 	defer func() {
 		// connection level panic
 		if err := recover(); err != nil {
@@ -165,7 +161,7 @@ func (sc *serveconn) serve() {
 		sc.wg.Wait()
 	}()
 
-	binding := sc.server.bindings[idx]
+	binding := sc.server.binding
 	var maxFrameSize int
 	if binding.MaxFrameSize > 0 {
 		maxFrameSize = binding.MaxFrameSize
@@ -210,7 +206,7 @@ func (sc *serveconn) serve() {
 }
 
 func (sc *serveconn) instrument(frame *RequestFrame, begin time.Time, err interface{}) {
-	binding := sc.server.bindings[sc.idx]
+	binding := sc.server.binding
 
 	if binding.CounterMetric == nil && binding.LatencyMetric == nil {
 		return
@@ -303,7 +299,7 @@ func (sc *serveconn) readFrames() (err error) {
 	ci := sc.ctx.Value(ConnectionInfoKey).(*ConnectionInfo)
 
 	ctx := sc.ctx
-	binding := sc.server.bindings[sc.idx]
+	binding := sc.server.binding
 	if binding.ReadFrameChSize > 0 {
 		runtime.LockOSThread()
 	}
@@ -390,7 +386,7 @@ func (sc *serveconn) readFrames() (err error) {
 }
 
 func (sc *serveconn) getCodec() CompressorCodec {
-	return sc.server.bindings[sc.idx].Codec
+	return sc.server.binding.Codec
 }
 
 var wfrPool = sync.Pool{New: func() interface{} {
@@ -436,7 +432,7 @@ func (sc *serveconn) writeFrameBytes(dfw *defaultFrameWriter) (err error) {
 			}
 		}
 
-		binding := sc.server.bindings[sc.idx]
+		binding := sc.server.binding
 		var releaseWlock bool
 		defer func() {
 
@@ -673,7 +669,7 @@ func (sc *serveconn) writeFirstFrame(cmd Cmd, flags FrameFlag, payload []byte) (
 // Close the connection.
 func (sc *serveconn) Close() error {
 
-	if limiter := sc.server.closeRateLimiter[sc.idx]; limiter != nil {
+	if limiter := sc.server.closeRateLimiter; limiter != nil {
 		limiter.Take()
 	}
 

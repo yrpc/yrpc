@@ -10,7 +10,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/oklog/run"
 	"go.uber.org/ratelimit"
 	"go.uber.org/zap"
 )
@@ -109,19 +108,19 @@ func (mux *ServeMux) ServeQRPC(w FrameWriter, r *RequestFrame) {
 // Server defines parameters for running an qrpc server.
 type Server struct {
 	// one handler for each listening address
-	bindings []ServerBinding
-	upTime   time.Time
+	binding ServerBinding
+	upTime  time.Time
 
 	// manages below
 	mu           sync.Mutex
-	listeners    []net.Listener
+	listener     net.Listener
 	doneChan     chan struct{}
-	shutdownFunc []func()
+	shutdownFunc func()
 	done         bool
 
-	id2Conn          []sync.Map
-	activeConn       []sync.Map // for better iterate when write, map[*serveconn]struct{}
-	closeRateLimiter []ratelimit.Limiter
+	id2Conn          sync.Map
+	activeConn       sync.Map // for better iterate when write, map[*serveconn]struct{}
+	closeRateLimiter ratelimit.Limiter
 
 	wg sync.WaitGroup // wait group for goroutines
 
@@ -129,85 +128,52 @@ type Server struct {
 }
 
 // NewServer creates a server
-func NewServer(bindings []ServerBinding) *Server {
-	closeRateLimiter := make([]ratelimit.Limiter, len(bindings))
-	for idx, binding := range bindings {
-		if binding.MaxCloseRate != 0 {
-			closeRateLimiter[idx] = ratelimit.New(binding.MaxCloseRate)
-		}
-		if binding.WriteFrameChSize < 1 {
-			// at least 1 for WriteFrameChSize
-			bindings[idx].WriteFrameChSize = 1
-		}
+func NewServer(binding ServerBinding) *Server {
+	var closeRateLimiter ratelimit.Limiter
+	if binding.MaxCloseRate != 0 {
+		closeRateLimiter = ratelimit.New(binding.MaxCloseRate)
+	}
+	if binding.WriteFrameChSize < 1 {
+		// at least 1 for WriteFrameChSize
+		binding.WriteFrameChSize = 1
 	}
 	return &Server{
-		bindings:         bindings,
-		upTime:           time.Now(),
-		listeners:        make([]net.Listener, len(bindings)),
-		doneChan:         make(chan struct{}),
-		id2Conn:          make([]sync.Map, len(bindings)),
-		activeConn:       make([]sync.Map, len(bindings)),
+		binding: binding,
+		upTime:  time.Now(),
+		doneChan: make(chan struct{}),
 		closeRateLimiter: closeRateLimiter,
 	}
 }
 
 // ListenAndServe starts listening on all bindings
 func (srv *Server) ListenAndServe() (err error) {
+	var (
+		rawln net.Listener
+		yln Listener
+	)
 
-	err = srv.ListenAll()
+	if srv.binding.ListenFunc != nil {
+		rawln, err = srv.binding.ListenFunc("tcp", srv.binding.Addr)
+	} else {
+		rawln, err = net.Listen("tcp", srv.binding.Addr)
+	}
 	if err != nil {
-		return
-	}
-	return srv.ServeAll()
-}
-
-// ListenAll for listen on all bindings
-func (srv *Server) ListenAll() (err error) {
-
-	for i, binding := range srv.bindings {
-
-		var ln net.Listener
-
-		if binding.ListenFunc != nil {
-			ln, err = binding.ListenFunc("tcp", binding.Addr)
-		} else {
-			ln, err = net.Listen("tcp", binding.Addr)
-		}
-		if err != nil {
-			return
-		}
-
-		if binding.OverlayNetwork != nil {
-			srv.bindings[i].ln = binding.OverlayNetwork(ln)
-		} else {
-			srv.bindings[i].ln = ln.(*net.TCPListener)
-		}
+		return err
 	}
 
-	return
+	if srv.binding.OverlayNetwork != nil {
+		yln = srv.binding.OverlayNetwork(rawln)
+	} else {
+		println("setting binding.ln to tcp listener")
+		yln = rawln.(*net.TCPListener)
+	}
+
+	return srv.Serve(yln)
 }
 
 // BindingConfig for retrieve ServerBinding
-func (srv *Server) BindingConfig(idx int) ServerBinding {
-	return srv.bindings[idx]
-}
-
-// ServeAll for serve on all bindings
-func (srv *Server) ServeAll() error {
-	var g run.Group
-
-	for i := range srv.bindings {
-		idx := i
-		binding := srv.bindings[i]
-		g.Add(func() error {
-			return srv.Serve(binding.ln, idx)
-		}, func(err error) {
-			serr := srv.Shutdown()
-			l.Error("Shutdown", zap.Error(err), zap.Error(serr))
-		})
-	}
-
-	return g.Run()
+func (srv *Server) BindingConfig() ServerBinding {
+	return srv.binding
 }
 
 // Listener defines required listener methods for qrpc
@@ -235,35 +201,12 @@ var (
 //
 // Serve always returns a non-nil error. After Shutdown or Close, the
 // returned error is ErrServerClosed.
-func (srv *Server) Serve(qrpcListener Listener, idx int) error {
-
-	var applyConnOpts func(TCPConn)
-	if srv.bindings[idx].WBufSize > 0 || srv.bindings[idx].RBufSize > 0 {
-		wbufSize := srv.bindings[idx].WBufSize
-		rbufSize := srv.bindings[idx].RBufSize
-		applyConnOpts = func(tc TCPConn) {
-			if wbufSize > 0 {
-				sockOptErr := tc.SetWriteBuffer(wbufSize)
-				if sockOptErr != nil {
-					l.Error("SetWriteBuffer", zap.Int("wbufSize", wbufSize), zap.Error(sockOptErr))
-				}
-			}
-			if rbufSize > 0 {
-				sockOptErr := tc.SetReadBuffer(rbufSize)
-				if sockOptErr != nil {
-					l.Error("SetReadBuffer", zap.Int("rbufSize", rbufSize), zap.Error(sockOptErr))
-				}
-			}
-		}
-	}
-	ln := tcpKeepAliveListener{
-		Listener:      qrpcListener,
-		applyConnOpts: applyConnOpts}
-	defer ln.Close()
+func (srv *Server) Serve(ln Listener) error {
 	var tempDelay time.Duration // how long to sleep on accept failure
 
-	srv.trackListener(ln, idx, true)
-	defer srv.trackListener(ln, idx, false)
+	ln = NewTCPKeepAliveListener(ln)
+	// srv.trackListener(ln, true)
+	// defer srv.trackListener(ln, false)
 
 	serveCtx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
@@ -304,17 +247,20 @@ func (srv *Server) Serve(qrpcListener Listener, idx int) error {
 		tempDelay = 0
 
 		GoFunc(&srv.wg, func() {
-			c := srv.newConn(serveCtx, rw, idx)
+			c := srv.newConn(serveCtx, rw)
 			c.serve()
 		})
 	}
+}
+
+func NewTCPKeepAliveListener(ln Listener) Listener {
+	return &tcpKeepAliveListener{ln}
 }
 
 // tcpKeepAliveListener sets TCP keep-alive timeouts on accepted
 // connections.
 type tcpKeepAliveListener struct {
 	Listener
-	applyConnOpts func(TCPConn)
 }
 
 // TCPConn in qrpc's aspect
@@ -326,7 +272,7 @@ type TCPConn interface {
 	SetReadBuffer(bytes int) error
 }
 
-func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
+func (ln *tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	c, err = ln.Listener.Accept()
 	if err != nil {
 		return
@@ -343,35 +289,21 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 
 	tc.SetKeepAlive(true)
 	tc.SetKeepAlivePeriod(20 * time.Second)
-	if ln.applyConnOpts != nil {
-		ln.applyConnOpts(tc)
-	}
 
 	return
 }
 
-func (srv *Server) trackListener(ln net.Listener, idx int, add bool) {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
-	if add {
-		srv.listeners[idx] = ln
-	} else {
-		srv.listeners[idx] = nil
-	}
-}
-
 // Create new connection from rwc.
-func (srv *Server) newConn(ctx context.Context, rwc net.Conn, idx int) (sc *serveconn) {
+func (srv *Server) newConn(ctx context.Context, rwc net.Conn) (sc *serveconn) {
 	sc = &serveconn{
 		server:         srv,
 		rwc:            rwc,
-		idx:            idx,
 		untrackedCh:    make(chan struct{}),
 		cs:             &ConnStreams{},
-		readFrameCh:    make(chan readFrameResult, srv.bindings[idx].ReadFrameChSize),
-		writeFrameCh:   make(chan *writeFrameRequest, srv.bindings[idx].WriteFrameChSize),
-		cachedRequests: make([]*writeFrameRequest, 0, srv.bindings[idx].WriteFrameChSize),
-		cachedBuffs:    make(net.Buffers, 0, srv.bindings[idx].WriteFrameChSize),
+		readFrameCh:    make(chan readFrameResult, srv.binding.ReadFrameChSize),
+		writeFrameCh:   make(chan *writeFrameRequest, srv.binding.WriteFrameChSize),
+		cachedRequests: make([]*writeFrameRequest, 0, srv.binding.WriteFrameChSize),
+		cachedBuffs:    make(net.Buffers, 0, srv.binding.WriteFrameChSize),
 		wlockCh:        make(chan struct{}, 1)}
 
 	ctx, cancelCtx := context.WithCancel(ctx)
@@ -379,9 +311,9 @@ func (srv *Server) newConn(ctx context.Context, rwc net.Conn, idx int) (sc *serv
 
 	sc.cancelCtx = cancelCtx
 	sc.ctx = ctx
-	sc.bytesWriter = NewWriterWithTimeout(ctx, rwc, srv.bindings[idx].DefaultWriteTimeout)
+	sc.bytesWriter = NewWriterWithTimeout(ctx, rwc, srv.binding.DefaultWriteTimeout)
 
-	srv.activeConn[idx].Store(sc, struct{}{})
+	srv.activeConn.Store(sc, struct{}{})
 
 	return sc
 }
@@ -392,10 +324,8 @@ var kickOrder uint64
 // it is concurrent safe
 func (srv *Server) bindID(sc *serveconn, id string) (kick bool, ko uint64) {
 
-	idx := sc.idx
-
 check:
-	v, loaded := srv.id2Conn[idx].LoadOrStore(id, sc)
+	v, loaded := srv.id2Conn.LoadOrStore(id, sc)
 
 	if loaded {
 		vsc := v.(*serveconn)
@@ -415,10 +345,10 @@ check:
 			}
 		}
 
-		if srv.bindings[idx].CounterMetric != nil {
+		if srv.binding.CounterMetric != nil {
 			errStr := fmt.Sprintf("%v", err)
 			countlvs := []string{"method", "kickoff", "error", errStr}
-			srv.bindings[idx].CounterMetric.With(countlvs...).Add(1)
+			srv.binding.CounterMetric.With(countlvs...).Add(1)
 		}
 
 		atomic.AddUint64(&kickOrder, 1)
@@ -437,17 +367,16 @@ func (srv *Server) untrack(sc *serveconn, kicked bool) (bool, <-chan struct{}) {
 	if !locked {
 		return false, sc.untrackedCh
 	}
-	idx := sc.idx
 
 	id := sc.GetID()
 	if id != "" {
-		srv.id2Conn[idx].Delete(id)
+		srv.id2Conn.Delete(id)
 	}
-	srv.activeConn[idx].Delete(sc)
+	srv.activeConn.Delete(sc)
 
 	if kicked {
-		if srv.bindings[idx].OnKickCB != nil {
-			srv.bindings[idx].OnKickCB(sc.GetWriter())
+		if srv.binding.OnKickCB != nil {
+			srv.binding.OnKickCB(sc.GetWriter())
 		}
 	}
 	close(sc.untrackedCh)
@@ -478,8 +407,8 @@ func (srv *Server) Shutdown() error {
 
 	close(srv.doneChan)
 
-	for _, f := range srv.shutdownFunc {
-		f()
+	if srv.shutdownFunc != nil {
+		srv.shutdownFunc()
 	}
 
 done:
@@ -498,9 +427,8 @@ func (srv *Server) OnShutdown(f func()) {
 		return
 	}
 
-	srv.shutdownFunc = append(srv.shutdownFunc, f)
+	srv.shutdownFunc = f
 	srv.mu.Unlock()
-
 }
 
 // GetPushID gets the pushId
@@ -510,9 +438,9 @@ func (srv *Server) GetPushID() uint64 {
 }
 
 // WalkConnByID iterates over  serveconn by ids
-func (srv *Server) WalkConnByID(idx int, ids []string, f func(FrameWriter, *ConnectionInfo)) {
+func (srv *Server) WalkConnByID(ids []string, f func(FrameWriter, *ConnectionInfo)) {
 	for _, id := range ids {
-		v, ok := srv.id2Conn[idx].Load(id)
+		v, ok := srv.id2Conn.Load(id)
 		if ok {
 			sc := v.(*serveconn)
 			f(v.(*serveconn).GetWriter(), sc.ctx.Value(ConnectionInfoKey).(*ConnectionInfo))
@@ -520,9 +448,9 @@ func (srv *Server) WalkConnByID(idx int, ids []string, f func(FrameWriter, *Conn
 	}
 }
 
-// GetConnectionInfoByID returns the ConnectionInfo for idx+id
-func (srv *Server) GetConnectionInfoByID(idx int, id string) *ConnectionInfo {
-	v, ok := srv.id2Conn[idx].Load(id)
+// GetConnectionInfoByID returns the ConnectionInfo for id
+func (srv *Server) GetConnectionInfoByID(id string) *ConnectionInfo {
+	v, ok := srv.id2Conn.Load(id)
 	if !ok {
 		return nil
 	}
@@ -531,22 +459,21 @@ func (srv *Server) GetConnectionInfoByID(idx int, id string) *ConnectionInfo {
 }
 
 // WalkConn walks through each serveconn
-func (srv *Server) WalkConn(idx int, f func(FrameWriter, *ConnectionInfo) bool) {
-	srv.activeConn[idx].Range(func(k, v interface{}) bool {
+func (srv *Server) WalkConn(f func(FrameWriter, *ConnectionInfo) bool) {
+	srv.activeConn.Range(func(k, v interface{}) bool {
 		sc := k.(*serveconn)
 		return f(sc.GetWriter(), sc.ctx.Value(ConnectionInfoKey).(*ConnectionInfo))
 	})
 }
 
 func (srv *Server) closeListenersLocked() (err error) {
-	for idx, ln := range srv.listeners {
-		if ln == nil {
-			continue
-		}
-		if err = ln.Close(); err != nil {
-			return
-		}
-		srv.listeners[idx] = nil
+	ln := srv.listener
+	if ln == nil {
+		return nil
 	}
-	return
+	if err = ln.Close(); err != nil {
+		return
+	}
+	srv.listener = nil
+	return nil
 }
