@@ -2,13 +2,11 @@ package yrpc
 
 import (
 	"encoding/binary"
-	"errors"
 	"sync"
 )
 
 // frameBytesWriter for writing frame bytes
 type frameBytesWriter interface {
-	getCodec() CompressorCodec
 	// writeFrameBytes write the frame bytes atomically or error
 	writeFrameBytes(dfw *defaultFrameWriter) error
 }
@@ -86,43 +84,8 @@ func (dfw *defaultFrameWriter) Payload() []byte {
 	return dfw.wbuf[16:]
 }
 
-var (
-	// ErrNoCodec when no codec available
-	ErrNoCodec = errors.New("no codec available")
-)
-
 // EndWrite finishes write frame
 func (dfw *defaultFrameWriter) EndWrite() (err error) {
-
-	payloadLength := len(dfw.Payload())
-	if payloadLength == 0 {
-		dfw.SetFlags(dfw.Flags().ToNonCodec())
-	} else if dfw.Flags().IsCodec() {
-		codec := dfw.fbw.getCodec()
-		if codec == nil {
-			err = ErrNoCodec
-			return
-		}
-		var encodedPayload []byte
-		encodedPayload, err = codec.Encode(dfw.Payload())
-		if err != nil {
-			return
-		}
-		if len(encodedPayload) > payloadLength {
-			dfw.SetFlags(dfw.Flags().ToNonCodec())
-		} else {
-			dfw.wbuf = dfw.wbuf[:16]
-			dfw.WriteBytes(encodedPayload)
-		}
-	}
-
-	err = dfw.endWrite()
-
-	return
-}
-
-func (dfw *defaultFrameWriter) EndWriteCompressed() (err error) {
-	dfw.SetFlags(dfw.Flags().ToCodec())
 	return dfw.endWrite()
 }
 
@@ -196,8 +159,4 @@ func (dsw *defaultStreamWriter) WriteBytes(v []byte) {
 
 func (dsw *defaultStreamWriter) EndWrite(end bool) error {
 	return (*defaultFrameWriter)(dsw).StreamEndWrite(end)
-}
-
-func (dsw *defaultStreamWriter) EndWriteCompressed() (err error) {
-	return (*defaultFrameWriter)(dsw).EndWriteCompressed()
 }

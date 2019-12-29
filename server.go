@@ -27,7 +27,6 @@ type FrameWriter interface {
 	StartWrite(requestID uint64, cmd Cmd, flags FrameFlag)
 	WriteBytes(v []byte) // v is copied in WriteBytes
 	EndWrite() error     // block until scheduled
-	EndWriteCompressed() error
 
 	ResetFrame(requestID uint64, reason Cmd) error
 }
@@ -38,7 +37,6 @@ type StreamWriter interface {
 	StartWrite(cmd Cmd)
 	WriteBytes(v []byte)     // v is copied in WriteBytes
 	EndWrite(end bool) error // block until scheduled
-	EndWriteCompressed() error
 }
 
 // A Handler responds to an qrpc request.
@@ -138,9 +136,9 @@ func NewServer(binding ServerBinding) *Server {
 		binding.WriteFrameChSize = 1
 	}
 	return &Server{
-		binding: binding,
-		upTime:  time.Now(),
-		doneChan: make(chan struct{}),
+		binding:          binding,
+		upTime:           time.Now(),
+		doneChan:         make(chan struct{}),
 		closeRateLimiter: closeRateLimiter,
 	}
 }
@@ -149,7 +147,7 @@ func NewServer(binding ServerBinding) *Server {
 func (srv *Server) ListenAndServe() (err error) {
 	var (
 		rawln net.Listener
-		yln Listener
+		yln   Listener
 	)
 
 	if srv.binding.ListenFunc != nil {

@@ -343,10 +343,6 @@ func (conn *Connection) writeFirstFrame(cmd Cmd, flags FrameFlag, payload []byte
 	return requestID, resp, writer, nil
 }
 
-func (conn *Connection) getCodec() CompressorCodec {
-	return conn.conf.Codec
-}
-
 func (conn *Connection) writeFrameBytes(dfw *defaultFrameWriter) error {
 
 	wfr := wfrPool.Get().(*writeFrameRequest)
@@ -438,7 +434,7 @@ func (conn *Connection) readFrames() {
 	if conn.rwc == nil {
 		return
 	}
-	reader := newFrameReader(*conn.loopCtx, conn.rwc, conn.conf.ReadTimeout, conn.conf.Codec)
+	reader := newFrameReader(*conn.loopCtx, conn.rwc, conn.conf.ReadTimeout)
 	defer reader.Finalize()
 
 	for {

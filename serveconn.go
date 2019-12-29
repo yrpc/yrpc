@@ -169,7 +169,7 @@ func (sc *serveconn) serve() {
 		maxFrameSize = DefaultMaxFrameSize
 	}
 	ctx := sc.ctx
-	sc.reader = newFrameReaderWithMFS(ctx, sc.rwc, binding.DefaultReadTimeout, binding.Codec, maxFrameSize)
+	sc.reader = newFrameReaderWithMFS(ctx, sc.rwc, binding.DefaultReadTimeout, maxFrameSize)
 	sc.writer = newFrameWriter(sc) // only used by blocking mode
 
 	sc.inflight = 1
@@ -383,10 +383,6 @@ func (sc *serveconn) readFrames() (err error) {
 		}
 	}
 
-}
-
-func (sc *serveconn) getCodec() CompressorCodec {
-	return sc.server.binding.Codec
 }
 
 var wfrPool = sync.Pool{New: func() interface{} {

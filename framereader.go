@@ -24,16 +24,15 @@ type defaultFrameReader struct {
 	rbuf         [16]byte // for header
 	ctx          context.Context
 	maxFrameSize int
-	codec        CompressorCodec
 }
 
 // newFrameReader creates a FrameWriter instance to read frames
-func newFrameReader(ctx context.Context, rwc net.Conn, timeout int, codec CompressorCodec) *defaultFrameReader {
-	return newFrameReaderWithMFS(ctx, rwc, timeout, codec, 0)
+func newFrameReader(ctx context.Context, rwc net.Conn, timeout int) *defaultFrameReader {
+	return newFrameReaderWithMFS(ctx, rwc, timeout, 0)
 }
 
-func newFrameReaderWithMFS(ctx context.Context, rwc net.Conn, timeout int, codec CompressorCodec, maxFrameSize int) *defaultFrameReader {
-	return &defaultFrameReader{Reader: NewReaderWithTimeout(ctx, rwc, timeout), ctx: ctx, codec: codec, maxFrameSize: maxFrameSize}
+func newFrameReaderWithMFS(ctx context.Context, rwc net.Conn, timeout int, maxFrameSize int) *defaultFrameReader {
+	return &defaultFrameReader{Reader: NewReaderWithTimeout(ctx, rwc, timeout), ctx: ctx, maxFrameSize: maxFrameSize}
 }
 
 // ReadFrame will only return the first frame in stream
@@ -106,15 +105,6 @@ func (dfr *defaultFrameReader) readFrame() (*Frame, error) {
 		err = dfr.ReadBytes(payload)
 		if err != nil {
 			return nil, err
-		}
-		if flags.IsCodec() {
-			if dfr.codec == nil {
-				return nil, ErrNoCodec
-			}
-			payload, err = dfr.codec.Decode(payload)
-			if err != nil {
-				return nil, err
-			}
 		}
 		frame.Payload = payload
 	}
