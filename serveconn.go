@@ -278,10 +278,8 @@ func (sc *serveconn) readFrames() (err error) {
 		if conf.CounterMetric != nil {
 			errStr := fmt.Sprintf("%v", err)
 			if err != nil {
-				if conf.OverlayNetwork != nil {
-					l.Error("readFrames", zap.Any("type", reflect.TypeOf(err)), zap.Error(err))
-					errStr = errStrReadFramesForOverlayNetwork
-				}
+				l.Error("readFrames", zap.Any("type", reflect.TypeOf(err)), zap.Error(err))
+				errStr = errStrReadFramesForOverlayNetwork
 			}
 
 			countlvs := []string{"method", "readFrames", "error", errStr}
@@ -401,9 +399,7 @@ func (sc *serveconn) writeFrameBytes(dfw *defaultFrameWriter) (err error) {
 			if err != nil {
 				if conf.CounterMetric != nil {
 					errStr := fmt.Sprintf("%v", err)
-					if conf.OverlayNetwork != nil {
-						errStr = errStrWriteFramesForOverlayNetwork
-					}
+					errStr = errStrWriteFramesForOverlayNetwork
 					countlvs := []string{"method", "writeFrames", "error", errStr}
 					conf.CounterMetric.With(countlvs...).Add(1)
 				}

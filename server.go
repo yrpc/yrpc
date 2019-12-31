@@ -145,32 +145,7 @@ func NewServer(conf ServerConfig) *Server {
 
 // ListenAndServe starts listening on all conf
 func (srv *Server) ListenAndServe() (err error) {
-	var (
-		rawln net.Listener
-		yln   net.Listener
-	)
-
-	if srv.conf.ListenFunc != nil {
-		rawln, err = srv.conf.ListenFunc("tcp", srv.conf.Addr)
-	} else {
-		rawln, err = net.Listen("tcp", srv.conf.Addr)
-	}
-	if err != nil {
-		return err
-	}
-
-	if srv.conf.OverlayNetwork != nil {
-		yln = srv.conf.OverlayNetwork(rawln)
-	} else {
-		yln = rawln
-	}
-
-	return srv.Serve(yln)
-}
-
-// BindingConfig for retrieve ServerConfig
-func (srv *Server) BindingConfig() ServerConfig {
-	return srv.conf
+	return srv.Serve(srv.conf.Listener)
 }
 
 var (
