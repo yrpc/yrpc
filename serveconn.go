@@ -67,22 +67,7 @@ type ConnectionInfo struct {
 	id          string
 	closeNotify []func()
 	SC          *serveconn
-	anything    interface{}
 	respes      map[uint64]*response
-}
-
-// GetAnything returns anything
-func (ci *ConnectionInfo) GetAnything() interface{} {
-	ci.l.Lock()
-	defer ci.l.Unlock()
-	return ci.anything
-}
-
-// SetAnything sets anything
-func (ci *ConnectionInfo) SetAnything(anything interface{}) {
-	ci.l.Lock()
-	ci.anything = anything
-	ci.l.Unlock()
 }
 
 // GetID returns the ID
