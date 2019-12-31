@@ -182,8 +182,6 @@ var (
 	ErrListenerAcceptReturnType = errors.New("qrpc: Listener.Accept doesn't return TCPConn")
 	// ErrAcceptTimedout when accept timed out
 	ErrAcceptTimedout = errors.New("qrpc: accept timed out")
-
-	defaultAcceptTimeout = 5 * time.Second
 )
 
 // Serve accepts incoming connections on the Listener qrpcListener, creating a

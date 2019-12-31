@@ -17,8 +17,6 @@ type Reader struct {
 }
 
 const (
-	// ReadNoTimeout will never timeout
-	ReadNoTimeout = -1
 	// ReadBufSize for read buf
 	ReadBufSize = 1024
 )
