@@ -3,7 +3,6 @@ package yrpc
 import (
 	"context"
 	"errors"
-	mathrand "math/rand"
 	"net"
 	"runtime"
 	"sync"
@@ -98,15 +97,9 @@ func (r *response) Close() {
 func NewConnection(addr string, conf ClientConfig, f SubFunc) (conn *Connection, err error) {
 	var rwc net.Conn
 	if conf.OverlayNetwork != nil {
-		rwc, err = conf.OverlayNetwork(addr,
-			DialConfig{
-				DialTimeout: conf.DialTimeout,
-			})
+		rwc, err = conf.OverlayNetwork(addr)
 	} else {
-		rwc, err = dialTCP(addr,
-			DialConfig{
-				DialTimeout: conf.DialTimeout,
-			})
+		rwc, err = dialTCP(addr)
 	}
 
 	if err != nil {
@@ -118,39 +111,13 @@ func NewConnection(addr string, conf ClientConfig, f SubFunc) (conn *Connection,
 	return
 }
 
-func dialTCP(addr string, dialConfig DialConfig) (rwc net.Conn, err error) {
-	rwc, err = net.DialTimeout("tcp", addr, dialConfig.DialTimeout)
+func dialTCP(addr string) (rwc net.Conn, err error) {
+	rwc, err = net.Dial("tcp", addr)
 	if err != nil {
 		l.Error("dialTCP addr", zap.String("addr", addr), zap.Error(err))
 		return
 	}
 	return
-}
-
-// NewConnectionWithReconnect constructs a *Connection with reconnect ability
-func NewConnectionWithReconnect(addrs []string, conf ClientConfig, f SubFunc) *Connection {
-	var copy []string
-	for _, addr := range addrs {
-		copy = append(copy, addr)
-	}
-	mathrand.Shuffle(len(copy), func(i, j int) {
-		copy[i], copy[j] = copy[j], copy[i]
-	})
-
-	var (
-		rwc net.Conn
-		err error
-	)
-	if conf.OverlayNetwork != nil {
-		rwc, err = conf.OverlayNetwork(copy[len(copy)-1], DialConfig{DialTimeout: conf.DialTimeout})
-	} else {
-		rwc, err = dialTCP(copy[len(copy)-1], DialConfig{DialTimeout: conf.DialTimeout})
-	}
-	if err != nil {
-		l.Error("initconnect DialTimeout", zap.Error(err))
-		rwc = nil
-	}
-	return newConnection(rwc, copy, conf, f, true)
 }
 
 // ClientConnectionInfoKey is context key for ClientConnectionInfo
@@ -182,7 +149,7 @@ func newConnection(rwc net.Conn, addr []string, conf ClientConfig, f SubFunc, re
 		loopCtx, loopCancelCtx := context.WithCancel(ctx)
 		c.loopCancelCtx = loopCancelCtx
 		atomic.StorePointer((*unsafe.Pointer)((unsafe.Pointer)(&c.loopCtx)), unsafe.Pointer(&loopCtx))
-		c.loopBytesWriter = NewWriterWithTimeout(loopCtx, rwc, conf.WriteTimeout)
+		c.loopBytesWriter = NewWriter(loopCtx, rwc)
 	}
 	GoFunc(&c.wg, c.loop)
 	return c
@@ -238,9 +205,9 @@ func (conn *Connection) connect() error {
 			err error
 		)
 		if conn.conf.OverlayNetwork != nil {
-			rwc, err = conn.conf.OverlayNetwork(addr, DialConfig{DialTimeout: conn.conf.DialTimeout})
+			rwc, err = conn.conf.OverlayNetwork(addr)
 		} else {
-			rwc, err = dialTCP(addr, DialConfig{DialTimeout: conn.conf.DialTimeout})
+			rwc, err = dialTCP(addr)
 		}
 
 		if err != nil {
@@ -251,7 +218,7 @@ func (conn *Connection) connect() error {
 			conn.rwc = rwc
 			atomic.StorePointer((*unsafe.Pointer)((unsafe.Pointer)(&conn.loopCtx)), unsafe.Pointer(&ctx))
 			conn.loopCancelCtx = cancelCtx
-			conn.loopBytesWriter = NewWriterWithTimeout(ctx, rwc, conn.conf.WriteTimeout)
+			conn.loopBytesWriter = NewWriter(ctx, rwc)
 			conn.mu.Unlock()
 			return nil
 		}
@@ -421,7 +388,7 @@ func (conn *Connection) readFrames() {
 	if conn.rwc == nil {
 		return
 	}
-	reader := newFrameReader(*conn.loopCtx, conn.rwc, conn.conf.ReadTimeout)
+	reader := newFrameReader(*conn.loopCtx, conn.rwc)
 	defer reader.Finalize()
 
 	for {

@@ -25,11 +25,6 @@ func NewWriter(ctx context.Context, conn net.Conn) *Writer {
 	return &Writer{ctx: ctx, conn: conn, timeout: WriteNoTimeout}
 }
 
-// NewWriterWithTimeout new instance with timeout
-func NewWriterWithTimeout(ctx context.Context, conn net.Conn, timeout int) *Writer {
-	return &Writer{ctx: ctx, conn: conn, timeout: timeout}
-}
-
 // Write writes bytes
 func (w *Writer) Write(bytes []byte) (int, error) {
 	var (

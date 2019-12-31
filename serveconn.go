@@ -16,11 +16,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	// DefaultMaxFrameSize is the max size for each request frame
-	DefaultMaxFrameSize = 10 * 1024 * 1024
-)
-
 // A serveconn represents the server side of an qrpc connection.
 // all fields (except untrack) are immutable, mutables are in ConnectionInfo
 type serveconn struct {
@@ -93,16 +88,6 @@ func (ci *ConnectionInfo) SetID(id string) (bool, uint64) {
 	return ci.SC.server.bindID(ci.SC, id)
 }
 
-// ReaderConfig for change reader timeout
-type ReaderConfig interface {
-	SetReadTimeout(timeout int)
-}
-
-// ReaderConfig for change reader config
-func (ci *ConnectionInfo) ReaderConfig() ReaderConfig {
-	return ci.SC.reader
-}
-
 // RemoteAddr returns the remote network address.
 func (ci *ConnectionInfo) RemoteAddr() string {
 	return ci.SC.RemoteAddr()
@@ -147,14 +132,8 @@ func (sc *serveconn) serve() {
 	}()
 
 	conf := sc.server.conf
-	var maxFrameSize int
-	if conf.MaxFrameSize > 0 {
-		maxFrameSize = conf.MaxFrameSize
-	} else {
-		maxFrameSize = DefaultMaxFrameSize
-	}
 	ctx := sc.ctx
-	sc.reader = newFrameReaderWithMFS(ctx, sc.rwc, conf.DefaultReadTimeout, maxFrameSize)
+	sc.reader = newFrameReader(ctx, sc.rwc)
 	sc.writer = newFrameWriter(sc) // only used by blocking mode
 
 	sc.inflight = 1

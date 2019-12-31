@@ -257,7 +257,7 @@ func (srv *Server) newConn(ctx context.Context, rwc net.Conn) (sc *serveconn) {
 
 	sc.cancelCtx = cancelCtx
 	sc.ctx = ctx
-	sc.bytesWriter = NewWriterWithTimeout(ctx, rwc, srv.conf.DefaultWriteTimeout)
+	sc.bytesWriter = NewWriter(ctx, rwc)
 
 	srv.activeConn.Store(sc, struct{}{})
 

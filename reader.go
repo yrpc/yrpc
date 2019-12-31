@@ -7,15 +7,13 @@ import (
 	"io"
 	"net"
 	"sync"
-	"time"
 )
 
 // Reader read data from socket
 type Reader struct {
-	conn    net.Conn
-	reader  *bufio.Reader
-	timeout int
-	ctx     context.Context
+	conn   net.Conn
+	reader *bufio.Reader
+	ctx    context.Context
 }
 
 const (
@@ -25,24 +23,19 @@ const (
 	ReadBufSize = 1024
 )
 
-// NewReader creates a StreamReader instance
-func NewReader(ctx context.Context, conn net.Conn) *Reader {
-	return NewReaderWithTimeout(ctx, conn, ReadNoTimeout)
-}
-
 var bufPool = sync.Pool{New: func() interface{} {
 	return bufio.NewReaderSize(nil, ReadBufSize)
 }}
 
-// NewReaderWithTimeout allows specify timeout
-func NewReaderWithTimeout(ctx context.Context, conn net.Conn, timeout int) *Reader {
+// NewReader creates a StreamReader instance
+func NewReader(ctx context.Context, conn net.Conn) *Reader {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	bufReader := bufPool.Get().(*bufio.Reader)
 	bufReader.Reset(conn)
-	return &Reader{ctx: ctx, conn: conn, reader: bufReader, timeout: timeout}
+	return &Reader{ctx: ctx, conn: conn, reader: bufReader}
 }
 
 // Finalize is called when no longer used
@@ -50,11 +43,6 @@ func (r *Reader) Finalize() {
 	r.reader.Reset(nil)
 	bufPool.Put(r.reader)
 	r.reader = nil
-}
-
-// SetReadTimeout allows modify timeout for read
-func (r *Reader) SetReadTimeout(timeout int) {
-	r.timeout = timeout
 }
 
 // ReadUint32 read uint32 from socket
@@ -71,21 +59,12 @@ func (r *Reader) ReadUint32() (uint32, error) {
 // ReadBytes read bytes honouring CtxCheckMaxInterval
 func (r *Reader) ReadBytes(bytes []byte) (err error) {
 	var (
-		endTime time.Time
-		offset  int
-		n       int
+		offset int
+		n      int
 	)
-	timeout := r.timeout
-	if timeout > 0 {
-		endTime = time.Now().Add(time.Duration(timeout) * time.Second)
-	} else {
-		endTime = time.Time{}
-	}
 	size := len(bytes)
 
 	for {
-
-		r.conn.SetReadDeadline(endTime)
 		n, err = io.ReadFull(r.reader, bytes[offset:])
 		offset += n
 		if err != nil {
